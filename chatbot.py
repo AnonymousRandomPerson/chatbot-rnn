@@ -14,7 +14,7 @@ from .utils import TextLoader
 from .model import Model
 
 def main():
-    chatbot = Chatbot()
+    chatbot = Chatbot("Chatbot")
     sample_main(chatbot)
 
 class Chatbot(object):
@@ -22,7 +22,7 @@ class Chatbot(object):
     Wrapper class around the chatbot variables.
     """
 
-    def __init__(self):
+    def __init__(self, name: str, var_scope: str='rnnlm'):
         """
         Initializes command line arguments for the chatbot.
         """
@@ -48,12 +48,14 @@ class Chatbot(object):
                         'higher is more pressure, 0.4 is probably as high as it can go without'
                         'noticeably degrading coherence;'
                         'set to <0 to disable relevance masking')
-        self.args = parser.parse_args()
+        self.args, _ = parser.parse_known_args()
         self.max_length = self.args.n
         self.beam_width = self.args.beam_width
         self.relevance = self.args.relevance
         self.temperature = self.args.temperature
         self.topn = self.args.topn
+        self.name = name
+        self.var_scope = var_scope
 
     def initialize_model(self):
         """
@@ -71,7 +73,7 @@ class Chatbot(object):
         # Create the model from the saved arguments, in inference mode.
         print("Creating model...")
         saved_args.batch_size = self.args.beam_width
-        self.net = Model(saved_args, True)
+        self.net = Model(saved_args, self.var_scope, True)
         # Make tensorflow less verbose; filter out info (1+) and warnings (2+) but not errors (3).
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -112,6 +114,7 @@ class Chatbot(object):
                 early_term_token=self.vocab['\n'], beam_width=self.beam_width, forward_model_fn=forward_with_mask,
                 forward_args={'relevance':self.relevance, 'mask_reset_token':self.vocab['\n'], 'forbidden_token':self.vocab['>'], 'temperature':self.temperature, 'topn':self.topn})
             out_chars = []
+            print(self.name + ': ', end='')
             for i, char_token in enumerate(computer_response_generator):
                 out_chars.append(self.chars[char_token])
                 if print_response:
@@ -119,6 +122,7 @@ class Chatbot(object):
                 response += possibly_escaped_char(out_chars)
                 self.states = forward_text(self.net, self.sess, self.states, self.relevance, self.vocab, self.chars[char_token])
                 if i >= self.max_length: break
+            print()
             self.states = forward_text(self.net, self.sess, self.states, self.relevance, self.vocab, sanitize_text(self.vocab, "\n> "))
         return response
 
@@ -147,17 +151,19 @@ def sample_main(chatbot: Chatbot):
         chatbot.restore_model(sess)
         run_chatbot(chatbot)
 
-def get_chatbot(sess: tf.Session) -> Chatbot:
+def get_chatbot(sess: tf.Session, name: str, var_scope: str='rnnlm') -> Chatbot:
     """
     Gets a chatbot that can be talked to.
 
     Args:
         sess: The Tensorflow session that the chatbot should use.
+        name: The display name of the chatbot when speaking.
+        var_scope: The name of the Tensorflow variable scope to be used by the chatbot.
 
     Returns:
         A newly generated chatbot.
     """
-    chatbot = Chatbot()
+    chatbot = Chatbot(name, var_scope)
     chatbot.initialize_model()
     chatbot.restore_model(sess)
     return chatbot

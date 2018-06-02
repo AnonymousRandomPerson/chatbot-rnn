@@ -86,7 +86,7 @@ def train(args):
     print("Building the model")
     model = Model(args)
     print("Total trainable parameters: {:,d}".format(model.trainable_parameter_count()))
-    
+
     # Make tensorflow less verbose; filter out info (1+) and warnings (2+) but not errors (3).
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -144,7 +144,7 @@ def train(args):
                     # model state is accumulated and carried over between batches.
                     feed = {model.input_data: x, model.targets: y}
                     model.add_state_to_feed_dict(feed, state)
-                    
+
                     # Run the session! Specifically, tell TensorFlow to compute the graph to calculate
                     # the values of cost, final state, and the training op.
                     # Cost is used to monitor progress.

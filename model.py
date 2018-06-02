@@ -78,7 +78,7 @@ class PartitionedMultiRNNCell(rnn_cell.RNNCell):
             p_outputs = []
             p_states = []
             for p, p_inp in enumerate(p_inputs):
-                with vs.variable_scope("cell_%d_%d" % (l, p)):
+                with vs.variable_scope("cell_%d_%d" % (l, p), reuse=tf.AUTO_REUSE):
                     p_state = state[l][p]
                     cell = layer[p]
                     p_out, new_p_state = cell(p_inp, p_state)
@@ -107,8 +107,9 @@ def _rnn_state_placeholders(state):
         return tuple(structure)
 
 class Model():
-    def __init__(self, args, infer=False): # infer is set to true during sampling.
+    def __init__(self, args, var_scope: str, infer=False): # infer is set to true during sampling.
         self.args = args
+        self.var_scope = var_scope
         if infer:
             # Worry about one character at a time during sampling; no batching or BPTT.
             args.batch_size = 1
@@ -127,14 +128,15 @@ class Model():
             raise Exception("model type not supported: {}".format(args.model))
 
         # Create variables to track training progress.
-        self.lr = tf.Variable(args.learning_rate, name="learning_rate", trainable=False)
-        self.global_epoch_fraction = tf.Variable(0.0, name="global_epoch_fraction", trainable=False)
-        self.global_seconds_elapsed = tf.Variable(0.0, name="global_seconds_elapsed", trainable=False)
+        with tf.variable_scope('', reuse=tf.AUTO_REUSE):
+            self.lr = tf.get_variable(name="learning_rate", shape=[], trainable=False, initializer=tf.constant_initializer(args.learning_rate))
+            self.global_epoch_fraction = tf.get_variable(name="global_epoch_fraction", shape=[], trainable=False, initializer=tf.constant_initializer(0.0))
+            self.global_seconds_elapsed = tf.get_variable(name="global_seconds_elapsed", shape=[], trainable=False, initializer=tf.constant_initializer(0.0))
 
         # Call tensorflow library tensorflow-master/tensorflow/python/ops/rnn_cell
         # to create a layer of block_size cells of the specified basic type (RNN/GRU/LSTM).
         # Use the same rnn_cell library to create a stack of these cells
-        # of num_layers layers. Pass in a python list of these cells. 
+        # of num_layers layers. Pass in a python list of these cells.
         # cell = rnn_cell.MultiRNNCell([cell_fn(args.block_size) for _ in range(args.num_layers)])
         # cell = MyMultiRNNCell([cell_fn(args.block_size) for _ in range(args.num_layers)])
         cell = PartitionedMultiRNNCell(cell_fn, partitions=args.num_blocks,
@@ -154,7 +156,7 @@ class Model():
         layer_size = args.block_size * args.num_blocks
 
         # Scope our new variables to the scope identifier string "rnnlm".
-        with tf.variable_scope('rnnlm'):
+        with tf.variable_scope(self.var_scope, reuse=tf.AUTO_REUSE):
             # Create new variable softmax_w and softmax_b for output.
             # softmax_w is a weights matrix from the top layer of the model (of size layer_size)
             # to the vocabulary output (of size vocab_size).
@@ -172,7 +174,7 @@ class Model():
         # TODO: Check arguments parallel_iterations (default uses more memory and less time) and
         # swap_memory (default uses more memory but "minimal (or no) performance penalty")
         outputs, self.final_state = tf.nn.dynamic_rnn(cell, inputs,
-                initial_state=self.initial_state, scope='rnnlm')
+                initial_state=self.initial_state, scope=self.var_scope)
         # outputs has shape [batch_size, max_time, cell.output_size] because time_major == false.
         # Do we need to transpose the first two dimensions? (Answer: no, this ruins everything.)
         # outputs = tf.transpose(outputs, perm=[1, 0, 2])
@@ -243,7 +245,7 @@ class Model():
         # embedding, and all of the weights and biases in the MultiRNNCell model.
         # Save only the trainable variables and the placeholders needed to resume training;
         # discard the rest, including optimizer state.
-        save_vars = set(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='rnnlm'))
+        save_vars = set(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=self.var_scope))
         save_vars.update({self.lr, self.global_epoch_fraction, self.global_seconds_elapsed})
         return list(save_vars)
 
@@ -257,7 +259,7 @@ class Model():
 
     def trainable_parameter_count(self):
         total_parameters = 0
-        for variable in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='rnnlm'):
+        for variable in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.var_scope):
             shape = variable.get_shape()
             variable_parameters = 1
             for dim in shape:
