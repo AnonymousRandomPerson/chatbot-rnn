@@ -107,9 +107,9 @@ def _rnn_state_placeholders(state):
         return tuple(structure)
 
 class Model():
-    def __init__(self, args, var_scope: str, infer=False): # infer is set to true during sampling.
+    def __init__(self, args, infer=False): # infer is set to true during sampling.
         self.args = args
-        self.var_scope = var_scope
+        self.var_scope = 'rnnlm'
         if infer:
             # Worry about one character at a time during sampling; no batching or BPTT.
             args.batch_size = 1

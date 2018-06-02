@@ -14,7 +14,7 @@ from .utils import TextLoader
 from .model import Model
 
 def main():
-    chatbot = Chatbot("Chatbot")
+    chatbot = Chatbot()
     sample_main(chatbot)
 
 class Chatbot(object):
@@ -22,7 +22,7 @@ class Chatbot(object):
     Wrapper class around the chatbot variables.
     """
 
-    def __init__(self, name: str, var_scope: str='rnnlm'):
+    def __init__(self):
         """
         Initializes command line arguments for the chatbot.
         """
@@ -54,8 +54,6 @@ class Chatbot(object):
         self.relevance = self.args.relevance
         self.temperature = self.args.temperature
         self.topn = self.args.topn
-        self.name = name
-        self.var_scope = var_scope
 
     def initialize_model(self):
         """
@@ -73,7 +71,7 @@ class Chatbot(object):
         # Create the model from the saved arguments, in inference mode.
         print("Creating model...")
         saved_args.batch_size = self.args.beam_width
-        self.net = Model(saved_args, self.var_scope, True)
+        self.net = Model(saved_args, True)
         # Make tensorflow less verbose; filter out info (1+) and warnings (2+) but not errors (3).
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
@@ -114,7 +112,6 @@ class Chatbot(object):
                 early_term_token=self.vocab['\n'], beam_width=self.beam_width, forward_model_fn=forward_with_mask,
                 forward_args={'relevance':self.relevance, 'mask_reset_token':self.vocab['\n'], 'forbidden_token':self.vocab['>'], 'temperature':self.temperature, 'topn':self.topn})
             out_chars = []
-            print(self.name + ': ', end='')
             for i, char_token in enumerate(computer_response_generator):
                 out_chars.append(self.chars[char_token])
                 if print_response:
@@ -151,19 +148,17 @@ def sample_main(chatbot: Chatbot):
         chatbot.restore_model(sess)
         run_chatbot(chatbot)
 
-def get_chatbot(sess: tf.Session, name: str, var_scope: str='rnnlm') -> Chatbot:
+def get_chatbot(sess: tf.Session) -> Chatbot:
     """
     Gets a chatbot that can be talked to.
 
     Args:
         sess: The Tensorflow session that the chatbot should use.
-        name: The display name of the chatbot when speaking.
-        var_scope: The name of the Tensorflow variable scope to be used by the chatbot.
 
     Returns:
         A newly generated chatbot.
     """
-    chatbot = Chatbot(name, var_scope)
+    chatbot = Chatbot()
     chatbot.initialize_model()
     chatbot.restore_model(sess)
     return chatbot
